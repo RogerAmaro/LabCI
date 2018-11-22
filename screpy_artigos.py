@@ -1,107 +1,102 @@
+import zipf
+import math
 import pandas as pd
 from bs4 import BeautifulSoup
 import requests
-from urllib.request import  urlopen
 from time import sleep
-import os
+from os import listdir
+from PdfProcessing import ProcessingFile
 import sqlite3
-import PyPDF2
 
+def gofman(list_rept):
+	list_1=[]
+	for i in list_rept:
+		if i[1]==1:
+			list_1.append(i)
+
+	return (-1 + math.sqrt(1 + 8 * len(list_1)) / 2)
+
+
+def sql_consulta(id=None, selection="all"):
+	connection = sqlite3.connect("/home/roger/Documentos/Projetos/pesquisa/Pesquisa 18.2/pdf_data.db")
+	c = connection.cursor()
+	if selection=="all":
+		c.execute("""SELECT text FROM pdfs """)
+		rows = c.fetchall()
+		return rows
+
+	try:
+		c.execute("""SELECT * FROM pdfs WHERE ID=(?)""",[str(id)])
+		rows = c.fetchall()
+		return rows
+	except Exception as e:
+		return e
+def pdf_to_sql(path="/home/roger/Documentos/Projetos/pesquisa/Pesquisa 18.2/pdfs/"):
+	files = [x for x in listdir(path)]
+	ProObj = ProcessingFile()
+	for i in files:
+		print("Processing file:{}".format(i))
+		try:
+			text = ProObj.read_pdf(path+i)
+			ProObj.save_On_Sql(text,i)
+		except Exception as e:
+			return e
 
 def getLinksfromPlanilha():
-        date_sheet = pd.read_excel("/home/lab-pesquisa/Documentos/BRAPCI.xlsx",
-        sheet_name= "Documentos Recuperados (407)")
-
-        return ([i.replace("indexp","index") for i in date_sheet["Link"]], [x for x in date_sheet["Title"]])
-
+	date_sheet = pd.read_excel(
+		"/home/roger/Documentos/Projetos/pesquisa/Pesquisa 18.2/BRAPCI.xlsx", sheet_name="Documentos Recuperados (407)")
+	return ([i.replace("indexp", "index") for i in date_sheet["Link"]], [x for x in date_sheet["Title"]])
 
 
+def download_pdf(url,pathName):
+	sleep(1)
+	r = requests.get(url,stream=True)
+	try:
+		with open(pathName, 'wb') as f:
+			f.write(r.content)
+	except Exception as e:
+		return e
 def getlink_pdf(local_url):
-    sleep(2)
-    try:
-        html = requests.get(local_url).content
-    except Exception as erro:
-        print(erro)
-    soup = BeautifulSoup(html,'html.parser')
-    linkDownload = soup.find_all(id='download')
-    recover_url = str(linkDownload[0]).split('"')[3]
-    print("url recuperada :",recover_url)
-    return recover_url
+	sleep(1)
+	try:
+		html = requests.get(local_url).content
+		soup = BeautifulSoup(html, 'html.parser')
+		linkDownload = soup.findAll(class_="col-md-2 col-xs-2 text-right")
+		string = str(linkDownload).split('"')[3]
+		return string[string.index("http"):-3]
+	except Exception as e:
+		return e
+
+def ranking(words, zipf):
+	wordsInT = []
+	limSup = zipf + 5
+	limInf = zipf - 5
+	if limInf<0:
+		limInf=0
+	for i in words:
+		if i[1]<limSup and i[1]>=limInf:
+			wordsInT.append(i)
+
+	return wordsInT
 
 
 
 
-def save_file(url,loc,name):
-    path = loc+name+".pdf"
-    try:
-        r = requests.get(url, allow_redirects=True)
-    except requests.exceptions.ConnectionError:
-        return False
 
-    print(r.content)
-
-    try:
-        open(path, 'wb').write(r.content)
-    except OSError:
-        return save_file(url,loc,name[:60]+"...")
-
-    return "pdf salvo"
+if __name__ == '__main__':
+	words = ["gestão", "informação", "textual"]
+	media = []
+	text =[j for j in sql_consulta(selection="all")]
+	for i in text:
+		for k in i:
+			text = zipf.CounterWords(k,"null")
+			pontT= gofman(text)
+			rnk = ranking(text,pontT)
+			for w in rnk:
+				if w[0] in words:
+					print(w)
 
 
-def chose_folder():
-    folder = input("Folder location :")
-    print("Iniciando o processo de extração...")
-    return folder
-
-def ExtractTextfromPdf(path_to_file):
-    pages =''
-    pdf_file = open(path_to_file, 'rb')
-    read_pdf = PyPDF2.PdfFileReader(pdf_file)
-    if read_pdf.isEncrypted:
-        try:
-            read_pdf.decrypt('')
-        except NotImplementedError:
-            return False
-    number_of_pages = read_pdf.getNumPages()
-    for pageNum in range(number_of_pages):
-        page = read_pdf.getPage(pageNum)
-        page_content = page.extractText()
-        pages += page_content
-    return pages
-
-
-
-
-def mount_sql(path_name ="/home/lab-pesquisa/Documentos/pdfs/"):
-    files = [f for f in os.listdir(path_name)]
-    conn = sqlite3.connect("/home/lab-pesquisa/Documentos/data_files.db")
-    cursor = conn.cursor()
-    for pdf_name in files:
-        text = ExtractTextfromPdf(path_name+pdf_name)
-        cursor.execute("""INSERT INTO dados(artigos, texto) VALUES (?,?)""",(path_name,text))
-        conn.commit()
-        print("inserted to data")
-    return "process finished"
-
-
-
-
-# if __name__ == '__main__':
-#     folder_loc = chose_folder()
-#     pdfs_names = [str(x).replace('/'," ") for x in getLinksfromPlanilha()[1]]
-#
-#     all_links = getLinksfromPlanilha()[0]
-#     for link,name in zip(all_links,pdfs_names):
-#         # if os.path.isfile(folder_loc+name+".pdf"):
-#         #     print("O arquivo ja existe na pasta")
-#         # else:
-#         save_file(getlink_pdf(link),folder_loc,name)
-#
-#
-#
-#
-
-mount_sql()
 
 
 
